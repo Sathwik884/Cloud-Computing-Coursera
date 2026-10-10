@@ -36,11 +36,23 @@ echo $SUBNET2B
 
 echo 'Creating the TARGET GROUP and storing the ARN in $TARGETARN...'
 # https://awscli.amazonaws.com/v2/documentation/api/2.0.34/reference/elbv2/create-target-group.html
-TARGETARN=
+TARGETARN=TARGETARN=$(aws elbv2 create-target-group \
+  --name "$8" \
+  --protocol HTTP \
+  --port 80 \
+  --vpc-id "$VPCID" \
+  --target-type instance \
+  --query 'TargetGroups[0].TargetGroupArn' \
+  --output text)
 
 echo "Creating ELBv2 Elastic Load Balancer..."
 #https://awscli.amazonaws.com/v2/documentation/api/2.0.34/reference/elbv2/create-load-balancer.html
-ELBARN=
+ELBARN=$(aws elbv2 create-load-balancer \
+  --name "$9" \
+  --subnets "$SUBNET2A" "$SUBNET2B" \
+  --security-groups "$4" \
+  --query 'LoadBalancers[0].LoadBalancerArn' \
+  --output text)
 echo $ELBARN
 
 # AWS elbv2 wait for load-balancer available
