@@ -78,10 +78,10 @@ output "subnetid-2a" {
 # https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lb
 ##############################################################################
 resource "aws_lb" "lb" {
-  name               = 
+  name               = var.elb-name
   internal           = false
-  load_balancer_type = 
-  security_groups    = 
+  load_balancer_type = "application"
+  security_groups    = [var.vpc_security_group_ids ]
 
   subnets = [data.aws_subnets.subneta.ids[0], data.aws_subnets.subnetb.ids[0]]
 
@@ -105,11 +105,11 @@ resource "aws_lb_target_group" "alb-lb-tg" {
   # depends_on is effectively a waiter -- it forces this resource to wait until the listed
   # resource is ready
   depends_on  = [aws_lb.lb]
-  name        = 
-  target_type = 
-  port        = 
-  protocol    = 
-  vpc_id      = 
+  name        = var.tg-name
+  target_type = "instance"
+  port        = 80
+  protocol    = "HTTP"
+  vpc_id      = data.aws_vpc.main.id
 }
 
 ##############################################################################
@@ -117,13 +117,13 @@ resource "aws_lb_target_group" "alb-lb-tg" {
 ##############################################################################
 
 resource "aws_lb_listener" "front_end" {
-  load_balancer_arn = 
-  port              = 
-  protocol          = 
+  load_balancer_arn = aws_lb.lb.arn
+  port              = 80
+  protocol          = "HTTP"
 
   default_action {
     type             = "forward"
-    target_group_arn = 
+    target_group_arn = aws_lb_target_group.alb-lb-tg.arn
   }
 }
 
@@ -134,10 +134,10 @@ resource "aws_lb_listener" "front_end" {
 resource "aws_launch_template" "mp1-lt" {
   #name_prefix = "foo"
   #name = var.lt-name
-  image_id                             = 
+  image_id                             = var.imageid
   instance_initiated_shutdown_behavior = "terminate"
-  instance_type                        = 
-  key_name                             = 
+  instance_type                        = var.instance-type
+  key_name                             = var.key-name 
   monitoring {
     enabled = false
   }
@@ -172,19 +172,19 @@ resource "aws_launch_template" "mp1-lt" {
 ##############################################################################
 
 resource "aws_autoscaling_group" "bar" {
-  name                      = 
+  name                      = var.asg-name
   depends_on                = [aws_launch_template.mp1-lt]
-  desired_capacity          = 
-  max_size                  = 
-  min_size                  = 
+  desired_capacity          = var.desired-capacity
+  max_size                  = var.max-size
+  min_size                  = var.min-size
   health_check_grace_period = 300
-  health_check_type         = 
-  target_group_arns         = 
+  health_check_type         = "ELB"
+  target_group_arns         = [aws_lb_target_group.alb-lb-tg.arn]
   availability_zones        = [data.aws_availability_zones.primary.names[0], data.aws_availability_zones.secondary.names[0]]
 
  tag {
     key                 = "assessment"
-    value               = 
+    value               = var.module-tag
     propagate_at_launch = true
   }
 
@@ -202,8 +202,8 @@ resource "aws_autoscaling_group" "bar" {
 resource "aws_autoscaling_attachment" "example" {
   # Wait for lb to be running before attaching to asg
   depends_on  = [aws_lb.lb]
-  autoscaling_group_name = 
-  lb_target_group_arn    = 
+  autoscaling_group_name = aws_autoscaling_group.bar.name
+  lb_target_group_arn    = aws_lb_target_group.alb-lb-tg.arn
 }
 
 output "alb-lb-tg-arn" {
@@ -219,7 +219,8 @@ output "alb-lb-tg-id" {
 ##############################################################################
 
 resource "aws_dynamodb_table" "mp2-dynamodb-table" {
-  name           = 
+  name           = var.dynamodb-table-name
+  read_capacity  = var.dynamodb-read-capacity 
   billing_mode   = "PROVISIONED"
   read_capacity  = 20
   write_capacity = 20
@@ -238,7 +239,7 @@ resource "aws_dynamodb_table" "mp2-dynamodb-table" {
   }
 
   tags = {
-    Name        = 
+    Name        = var.dynamodb-table-name
   }
 }
 
@@ -248,7 +249,7 @@ resource "aws_dynamodb_table" "mp2-dynamodb-table" {
 
 resource "aws_dynamodb_table_item" "insert-sample-record" {
   depends_on = [aws_dynamodb_table.mp2-dynamodb-table]
-  table_name = 
+  table_name = var.dynamodb-table-name
   hash_key   = aws_dynamodb_table.mp2-dynamodb-table.hash_key
   range_key  = aws_dynamodb_table.mp2-dynamodb-table.range_key
 
@@ -272,11 +273,11 @@ ITEM
 ##############################################################################
 
 resource "aws_s3_bucket" "raw-bucket" {
-  bucket = 
+  bucket = var.raw-bucket-name
   force_destroy = true
 }
 
 resource "aws_s3_bucket" "finished-bucket" {
-  bucket = 
+  bucket = var.finished-bucket-name
   force_destroy = true
 }
